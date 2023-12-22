@@ -4,40 +4,62 @@ const multer = require('multer');
 const User = require('../models/user');
 const Recipe = require('../models/recipeBook');
 const Ingredient = require('../models/ingredients');
+const unitMapping = require('../models/unitmapping');
 
-const inventoryCheck = async (ingredients, AllIngredients) => {
-    const allIngredientsPresent = ingredients.every(async (ingredient) => {
-        const matchingIngredient = await AllIngredients.find(
+const inventoryCheck = async (ingredients, AllIngredients, UnitMaps) => {
+    const allIngredientsPresent = await Promise.all(ingredients.map(async (ingredient) => {
+
+        const matchingIngredient = AllIngredients.find(
             (allIngredient) => allIngredient._id.toString() === ingredient.ingredient_id
         );
 
-        if (!matchingIngredient || ingredient.quantity > matchingIngredient.inventory) {
-            return false;
+        if (!matchingIngredient) {
+            return false; 
         }
 
-        return true;
-    });
+        const unitMap = UnitMaps.find(
+            (unitMap) => unitMap.ingredient_id.toString() === ingredient.ingredient_id
+        );
 
-    return allIngredientsPresent;
+        const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
+        const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
+        const convertedInventory = matchingIngredient.inventory * getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit);
+        
+        if (convertedQuantity > convertedInventory) {
+            return false;
+        }
+        return true;
+    }));
+    return allIngredientsPresent.every((present) => present);
 }
 
-const costEstimation = async (ingredients, AllIngredients) => {
+const costEstimation = async (ingredients, AllIngredients, UnitMaps) => {
     let totalCost = 0;
 
     for (const ingredient of ingredients) {
-        const matchingIngredient = await AllIngredients.find(
+
+        const matchingIngredient = AllIngredients.find(
             (allIngredient) => allIngredient._id.toString() === ingredient.ingredient_id
         );
 
         if (matchingIngredient) {
-            const costPerUnit = matchingIngredient.avgCost || 0;
-            const requiredQuantity = ingredient.quantity || 0;
-            totalCost += costPerUnit * requiredQuantity;
+            const unitMap = UnitMaps.find(
+                (unitMap) => unitMap.ingredient_id.toString() === ingredient.ingredient_id
+            );
+            const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
+            const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
+            const costPerUnit = matchingIngredient.avgCost/getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit) || 0;
+            totalCost += costPerUnit * convertedQuantity;
         }
     }
 
     return totalCost;
 }
+
+const getConversionFactor = (fromUnit, toUnit, fromUnitArray) => {
+    const conversionObject = fromUnitArray.find((unit) => unit.unit === fromUnit);
+    return conversionObject ? conversionObject.conversion : 1;
+};
 
 exports.createRecipe = async (req, res) => {
     try {
@@ -53,17 +75,11 @@ exports.createRecipe = async (req, res) => {
             });
         }
 
-        // func for ingredients unit conversion to grams
-
         // Calculate cost and inventory as per ingredients table and stock
         const AllIngredients = await Ingredient.find({ userId });
-        const inventory = await inventoryCheck(ingredients, AllIngredients);
-        let cost;
-        if (inventory) {
-            cost = await costEstimation(ingredients, AllIngredients);
-        } else {
-            cost = 0;
-        }
+        const UnitMaps = await unitMapping.find({ userId });
+        const inventory = await inventoryCheck(ingredients, AllIngredients, UnitMaps);
+        const cost = await costEstimation(ingredients, AllIngredients, UnitMaps);
 
         // const inventory = true;
         // const cost = 30;
@@ -148,6 +164,26 @@ exports.getAllRecipe = async (req, res) => {
         res.json({ success: true, recipes });
     } catch (error) {
         console.error('Error fetching recipes:', error.message);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+};
+
+exports.deleteRecipe = async (req, res) => {
+    try {
+        const { recipeId } = req.body;
+
+        if (!recipeId) {
+            return res.json({
+                success: false,
+                message: 'RecipeId not found!',
+            });
+        }
+
+        const result = await Recipe.deleteOne({ _id: recipeId });
+
+        res.json({ success: true, message: 'Recipe deleted!' });
+    } catch (error) {
+        console.error('Error deleting recipe:', error.message);
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };

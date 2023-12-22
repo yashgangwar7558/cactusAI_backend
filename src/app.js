@@ -6,6 +6,7 @@ const connectToMongoDB = require('./db/conn')
 const userRouter = require('./routers/user');
 const recipesRouter = require('./routers/recipeBook');
 const ingredientsRouter = require('./routers/ingredients');
+const unitMapsRouter = require('./routers/unitmapping');
 
 const app = express();
 const port = process.env.PORT;
@@ -31,6 +32,7 @@ connectToMongoDB()
         app.use(userRouter)
         app.use(recipesRouter)
         app.use(ingredientsRouter)
+        app.use(unitMapsRouter)
 
         app.get('/', async (req, res) => {
             res.status(200).send("Server is live!")

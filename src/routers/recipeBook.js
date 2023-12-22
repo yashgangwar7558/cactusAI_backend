@@ -5,7 +5,8 @@ const multer = require('multer');
 const {
     createRecipe,
     getRecipe,
-    getAllRecipe
+    getAllRecipe,
+    deleteRecipe
 } = require('../controllers/recipeBook')
 
 const { isAuth } = require('../middlewares/auth');
@@ -16,5 +17,6 @@ const upload = multer({ storage: storage })
 router.post('/create-recipe', upload.single('photo'), createRecipe);
 router.post('/get-recipe', getRecipe);
 router.post('/get-recipes', getAllRecipe);
+router.post('/delete-recipe', deleteRecipe);
 
 module.exports = router;
