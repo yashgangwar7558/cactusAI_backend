@@ -14,7 +14,7 @@ const inventoryCheck = async (ingredients, AllIngredients, UnitMaps) => {
         );
 
         if (!matchingIngredient) {
-            return false; 
+            return false;
         }
 
         const unitMap = UnitMaps.find(
@@ -24,7 +24,7 @@ const inventoryCheck = async (ingredients, AllIngredients, UnitMaps) => {
         const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
         const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
         const convertedInventory = matchingIngredient.inventory * getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit);
-        
+
         if (convertedQuantity > convertedInventory) {
             return false;
         }
@@ -48,7 +48,7 @@ const costEstimation = async (ingredients, AllIngredients, UnitMaps) => {
             );
             const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
             const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
-            const costPerUnit = matchingIngredient.avgCost/getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit) || 0;
+            const costPerUnit = matchingIngredient.avgCost / getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit) || 0;
             totalCost += costPerUnit * convertedQuantity;
         }
     }
@@ -123,11 +123,28 @@ exports.createRecipe = async (req, res) => {
     }
 };
 
+exports.updateRelatedRecipes = async (ingredientId, userId) => {
+    try {
+        const recipesToUpdate = await Recipe.find({ 'ingredients.ingredient_id': ingredientId, userId: userId });
+
+        const AllIngredients = await Ingredient.find({ userId });
+        const UnitMaps = await unitMapping.find({ userId });
+
+        await Promise.all(recipesToUpdate.map(async (recipe) => {
+            recipe.inventory = await inventoryCheck(recipe.ingredients, AllIngredients, UnitMaps);
+            recipe.cost = await costEstimation(recipe.ingredients, AllIngredients, UnitMaps);
+            await recipe.save();
+        }));
+
+    } catch (error) {
+        console.error(`Error updating related recipes: ${error}`);
+    }
+};
+
 exports.getRecipe = async (req, res) => {
     try {
         const { recipeId } = req.body;
 
-        // Find a recipe by ID
         const recipe = await Recipe.findById(recipeId);
 
         if (!recipe) {
@@ -148,7 +165,6 @@ exports.getAllRecipe = async (req, res) => {
     try {
         const { userId } = req.body;
 
-        // Find a user by ID
         const user = await User.findById(userId);
 
         if (!user) {
@@ -158,7 +174,6 @@ exports.getAllRecipe = async (req, res) => {
             });
         }
 
-        // Find all recipes with the specified user ID
         const recipes = await Recipe.find({ userId: user._id });
 
         res.json({ success: true, recipes });
