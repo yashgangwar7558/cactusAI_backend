@@ -123,6 +123,87 @@ exports.createRecipe = async (req, res) => {
     }
 };
 
+exports.updateRecipe = async (req, res) => {
+    try {
+        const { recipeId ,userId, name, category, methodPrep, menuPrice, menuType } = req.body;
+        const ingredients = JSON.parse(req.body.ingredients)
+        const yields = JSON.parse(req.body.yields)
+        console.log(req.body);
+
+        if (!recipeId || !userId || !name || !category || !yields || !methodPrep || !ingredients || !menuPrice || !menuType) {
+            return res.json({
+                success: false,
+                message: 'Some fields are missing!',
+            });
+        }
+
+        // Calculate cost and inventory as per ingredients table and stock
+        const AllIngredients = await Ingredient.find({ userId });
+        const UnitMaps = await unitMapping.find({ userId });
+        const inventory = await inventoryCheck(ingredients, AllIngredients, UnitMaps);
+        const cost = await costEstimation(ingredients, AllIngredients, UnitMaps);
+
+        // const inventory = true;
+        // const cost = 30;
+
+        if (req.file) {
+            const { buffer } = req.file;
+            const photoName = `${name}_${Date.now()}`;
+
+            const photo = {
+                name: photoName,
+                img: {
+                    data: buffer.toString('base64'),
+                    contentType: req.file.mimetype,
+                },
+            };
+
+            const updatedRecipe = await Recipe.findByIdAndUpdate(recipeId, {
+                userId,
+                name,
+                category,
+                yields,
+                photo,
+                methodPrep,
+                ingredients,
+                cost,
+                menuPrice,
+                menuType,
+                inventory,
+            }, {
+                new: true 
+            });
+
+            res.json({ success: true, updatedRecipe });
+        } else {
+            // return res.json({
+            //     success: false,
+            //     message: 'Recipe photo not provided! edit',
+            // });
+
+            const updatedRecipe = await Recipe.findByIdAndUpdate(recipeId, {
+                userId,
+                name,
+                category,
+                yields,
+                methodPrep,
+                ingredients,
+                cost,
+                menuPrice,
+                menuType,
+                inventory,
+            }, {
+                new: true 
+            });
+
+            res.json({ success: true, updatedRecipe });
+        }
+    } catch (error) {
+        console.error('Error updating recipe:', error.message);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+};
+
 exports.updateRelatedRecipes = async (ingredientId, userId) => {
     try {
         const recipesToUpdate = await Recipe.find({ 'ingredients.ingredient_id': ingredientId, userId: userId });
