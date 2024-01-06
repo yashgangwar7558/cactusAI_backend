@@ -23,6 +23,7 @@ const recipeSchema = new mongoose.Schema({
   methodPrep: { type: String },
   ingredients: [recipeIngredientSchema],
   cost: { type: Number },
+  modifierCost: { type: Number},
   menuPrice: { type: Number },
   menuType: { type: String },
   inventory: { type: Boolean },

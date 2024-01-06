@@ -7,6 +7,12 @@ const userRouter = require('./routers/user');
 const recipesRouter = require('./routers/recipeBook');
 const ingredientsRouter = require('./routers/ingredients');
 const unitMapsRouter = require('./routers/unitmapping');
+const processInvoiceRouter = require('./routers/processInvoice');
+const purchaseHistoryRouter = require('./routers/purchaseHistory');
+const invoiceRouter = require('./routers/invoice');
+const processBillRouter = require('./routers/processBill');
+const salesRouter = require('./routers/sales');
+const salesHistoryRouter = require('./routers/salesHistory');
 
 const app = express();
 const port = process.env.PORT;
@@ -33,6 +39,12 @@ connectToMongoDB()
         app.use(recipesRouter)
         app.use(ingredientsRouter)
         app.use(unitMapsRouter)
+        app.use(processInvoiceRouter)
+        app.use(purchaseHistoryRouter)
+        app.use(invoiceRouter)
+        app.use(processBillRouter)
+        app.use(salesRouter)
+        app.use(salesHistoryRouter)
 
         app.get('/', async (req, res) => {
             res.status(200).send("Server is live!")

@@ -2,73 +2,20 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const User = require('../models/user');
+const { inventoryCheck, costEstimation } = require('../controllers/helper');
 const Recipe = require('../models/recipeBook');
 const Ingredient = require('../models/ingredients');
 const unitMapping = require('../models/unitmapping');
 
-const inventoryCheck = async (ingredients, AllIngredients, UnitMaps) => {
-    const allIngredientsPresent = await Promise.all(ingredients.map(async (ingredient) => {
-
-        const matchingIngredient = AllIngredients.find(
-            (allIngredient) => allIngredient._id.toString() === ingredient.ingredient_id
-        );
-
-        if (!matchingIngredient) {
-            return false;
-        }
-
-        const unitMap = UnitMaps.find(
-            (unitMap) => unitMap.ingredient_id.toString() === ingredient.ingredient_id
-        );
-
-        const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
-        const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
-        const convertedInventory = matchingIngredient.inventory * getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit);
-
-        if (convertedQuantity > convertedInventory) {
-            return false;
-        }
-        return true;
-    }));
-    return allIngredientsPresent.every((present) => present);
-}
-
-const costEstimation = async (ingredients, AllIngredients, UnitMaps) => {
-    let totalCost = 0;
-
-    for (const ingredient of ingredients) {
-
-        const matchingIngredient = AllIngredients.find(
-            (allIngredient) => allIngredient._id.toString() === ingredient.ingredient_id
-        );
-
-        if (matchingIngredient) {
-            const unitMap = UnitMaps.find(
-                (unitMap) => unitMap.ingredient_id.toString() === ingredient.ingredient_id
-            );
-            const toUnit = unitMap ? unitMap.toUnit : ingredient.unit;
-            const convertedQuantity = ingredient.quantity * getConversionFactor(ingredient.unit, toUnit, unitMap.fromUnit);
-            const costPerUnit = matchingIngredient.avgCost / getConversionFactor(matchingIngredient.invUnit, toUnit, unitMap.fromUnit) || 0;
-            totalCost += costPerUnit * convertedQuantity;
-        }
-    }
-
-    return totalCost;
-}
-
-const getConversionFactor = (fromUnit, toUnit, fromUnitArray) => {
-    const conversionObject = fromUnitArray.find((unit) => unit.unit === fromUnit);
-    return conversionObject ? conversionObject.conversion : 1;
-};
 
 exports.createRecipe = async (req, res) => {
     try {
-        const { userId, name, category, methodPrep, menuPrice, menuType } = req.body;
+        const { userId, name, category, methodPrep, modifierCost, menuPrice, menuType } = req.body;
         const ingredients = JSON.parse(req.body.ingredients)
         const yields = JSON.parse(req.body.yields)
         console.log(req.body);
 
-        if (!userId || !name || !category || !yields || !methodPrep || !ingredients || !menuPrice || !menuType) {
+        if (!userId || !name || !category || !yields || !methodPrep || !ingredients || !modifierCost || !menuPrice || !menuType) {
             return res.json({
                 success: false,
                 message: 'Some fields are missing!',
@@ -105,6 +52,7 @@ exports.createRecipe = async (req, res) => {
                 methodPrep,
                 ingredients,
                 cost,
+                modifierCost,
                 menuPrice,
                 menuType,
                 inventory,
@@ -125,7 +73,7 @@ exports.createRecipe = async (req, res) => {
 
 exports.updateRecipe = async (req, res) => {
     try {
-        const { recipeId ,userId, name, category, methodPrep, menuPrice, menuType } = req.body;
+        const { recipeId, userId, name, category, methodPrep, menuPrice, menuType } = req.body;
         const ingredients = JSON.parse(req.body.ingredients)
         const yields = JSON.parse(req.body.yields)
         console.log(req.body);
@@ -171,16 +119,11 @@ exports.updateRecipe = async (req, res) => {
                 menuType,
                 inventory,
             }, {
-                new: true 
+                new: true
             });
 
             res.json({ success: true, updatedRecipe });
         } else {
-            // return res.json({
-            //     success: false,
-            //     message: 'Recipe photo not provided! edit',
-            // });
-
             const updatedRecipe = await Recipe.findByIdAndUpdate(recipeId, {
                 userId,
                 name,
@@ -193,7 +136,7 @@ exports.updateRecipe = async (req, res) => {
                 menuType,
                 inventory,
             }, {
-                new: true 
+                new: true
             });
 
             res.json({ success: true, updatedRecipe });
@@ -207,13 +150,17 @@ exports.updateRecipe = async (req, res) => {
 exports.updateRelatedRecipes = async (ingredientId, userId) => {
     try {
         const recipesToUpdate = await Recipe.find({ 'ingredients.ingredient_id': ingredientId, userId: userId });
+        console.log(recipesToUpdate);
 
         const AllIngredients = await Ingredient.find({ userId });
         const UnitMaps = await unitMapping.find({ userId });
 
         await Promise.all(recipesToUpdate.map(async (recipe) => {
-            recipe.inventory = await inventoryCheck(recipe.ingredients, AllIngredients, UnitMaps);
-            recipe.cost = await costEstimation(recipe.ingredients, AllIngredients, UnitMaps);
+            const newInventory = await inventoryCheck(recipe.ingredients, AllIngredients, UnitMaps);
+            recipe.inventory = newInventory
+            const newCost = await costEstimation(recipe.ingredients, AllIngredients, UnitMaps);
+            recipe.cost = newCost
+            console.log("Update recipe: ", recipe.name, newInventory, newCost);
             await recipe.save();
         }));
 

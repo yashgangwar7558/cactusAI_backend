@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
-const { updateRelatedRecipes } = require('../models/recipeBook')
+const User = require('../models/user');
+const Recipe = require('../models/recipeBook');
+const unitMapping = require('../models/unitmapping');
+const { log } = require('console');
+const { inventoryCheck, costEstimation } = require('../controllers/helper');
+// const { updateRelatedRecipes } = require('../controllers/recipeBook');
 
 const ingredientSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' },
@@ -13,12 +18,30 @@ const ingredientSchema = new mongoose.Schema({
   slUnit: { type: String },
 });
 
-ingredientSchema.pre('save', async function (next) {
-  if (this.isModified('invUnit') || this.isModified('quantity') || this.isModified('avgCost')) {
-    await updateRelatedRecipes(this._id, this.userId);
-  }
+ingredientSchema.post('save', async function (doc, next) {
+  await updateRelatedRecipes(doc._id, doc.userId);
   next();
 });
+
+updateRelatedRecipes = async (ingredientId, userId) => {
+  try {
+    const recipesToUpdate = await Recipe.find({ 'ingredients.ingredient_id': ingredientId, userId: userId });
+
+    const AllIngredients = await Ingredient.find({ userId });
+    const UnitMaps = await unitMapping.find({ userId });
+
+    await Promise.all(recipesToUpdate.map(async (recipe) => {
+      const newInventory = await inventoryCheck(recipe.ingredients, AllIngredients, UnitMaps);
+      recipe.inventory = newInventory
+      const newCost = await costEstimation(recipe.ingredients, AllIngredients, UnitMaps);
+      recipe.cost = newCost
+      await recipe.save();
+    }));
+
+  } catch (error) {
+    console.error(`Error updating related recipes: ${error}`);
+  }
+};
 
 const Ingredient = mongoose.model('Ingredient', ingredientSchema);
 
